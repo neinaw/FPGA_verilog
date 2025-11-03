@@ -13,12 +13,12 @@ module predictor(
     task run;
         forever begin
             in_f.get(frame);
-            `uvm_info("PREDICT IN", $sformatf("%s", frame.convert2string()), UVM_HIGH);
+            `uvm_info("PREDICT IN", $sformatf("%s", frame.convert2string()), UVM_DEBUG);
             payload_size = frame.payload.size();
             if(!frame.bad_frame && payload_size <= 1024) begin
                 res = new();
                 // res.payload = frame.payload;
-                for(int i=0; i<payload_size-4; i++) begin
+                for(int i=0; i<payload_size; i++) begin
                     res.add_word(frame.payload[i]);
                 end
 

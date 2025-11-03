@@ -26,6 +26,9 @@ module responder(
         end
     end
 
-    assign s_axis_tready = 1;
+    always @(posedge clk) begin
+        s_axis_tready <= (($random % 5) == 0) ? 0 : 1;
+    end
 
+    // assign s_axis_tready = 1;
 endmodule

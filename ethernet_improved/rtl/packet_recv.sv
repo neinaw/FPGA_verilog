@@ -1,20 +1,15 @@
 `timescale 1 ns / 1 ps
 
-/*
-* RMII --> AXIS
-*/
-
 module packet_recv #(
     parameter [47:0] FPGA_MAC   = 48'h00_18_3e_04_b3_f2,
-    parameter [47:0] HOST_MAC   = 48'h54_e1_ad_33_0d_32,
     parameter        DATA_WIDTH = 8,
     parameter        DEPTH      = 1024
 ) (
-    input [1:0] RXD,
-    input       RXDV,
+    input logic [1:0] RXD,
+    input logic       RXDV,
 
-    input clk,
-    input rst,
+    input logic clk,
+    input logic rst,
 
     // header output
     output logic        header_valid,
@@ -24,21 +19,17 @@ module packet_recv #(
     input  logic        header_rd,
 
     // data output
-    output                    m_axis_tvalid,
-    output [DATA_WIDTH-1 : 0] m_axis_tdata,
-    output                    m_axis_tlast,
-    input                     m_axis_tready
+    output logic                    m_axis_tvalid,
+    output logic [DATA_WIDTH-1 : 0] m_axis_tdata,
+    output logic                    m_axis_tlast,
+    input  logic                    m_axis_tready
 );
 
-  // Triple-register received mii data
-  // metastability
-
-  localparam integer MII_WIDTH = 2;
   localparam [47:0] BROADCAST = 48'hFF_FF_FF_FF_FF_FF;
 
   localparam ADDR_SPACE_EXP = $clog2(DEPTH);
 
-  logic [2:0][MII_WIDTH-1:0] rxd_z;
+  logic [2:0][1:0] rxd_z;
   logic [2:0]                rxdv_z;
 
   always @(posedge clk) begin
@@ -54,12 +45,6 @@ module packet_recv #(
     end
   end
 
-  /*
-   +----------------+----------+------------------+------------------+------------+---------------------+---------+
-   | Preamble (7B)  | SFD (1B) | Dest MAC (6B)    | Src MAC (6B)     | Type (2B)  | Payload (46-1500B)  | CRC (4B)|
-   +----------------+----------+------------------+------------------+------------+---------------------+---------+
-			       |<-------------------- Header -------------------->|
-   */
   typedef struct packed {
     // Ethernet Frame Header
     // no FCS, added later
@@ -78,7 +63,7 @@ module packet_recv #(
   logic crc_en;
   logic crc_rst, next_crc_rst;
   logic [3:0][7:0] running_crc;
-  logic bad_frame, next_bad_frame;
+  logic bad_frame;
 
   //dividing by 2 since we Rx/Tx 2 bits at a time
   localparam HEADER_CYCLES = $bits(ethernet_header) / 2;
@@ -89,8 +74,6 @@ module packet_recv #(
   logic [ 7:0] data_buffer;
   logic [63:0] preamble_sfd_buffer;
   logic [63:0] preamble_sfd_buffer_next;
-  // logic [31:0] fcs_buffer, next_fcs_buffer;
-  logic [31:0] crc_buffer, next_crc_buffer;
   ethernet_header header_buffer;
 
   // State machine
@@ -99,7 +82,6 @@ module packet_recv #(
     PREAMBLE_SFD,
     HEADER,
     DATA
-    // ,FCS
   } state_type;
 
   state_type current_state = IDLE;
@@ -124,18 +106,9 @@ module packet_recv #(
   end
 
   logic [47:0] packet_destination;
-  // logic [1:0][7:0] ethertype;
-  // logic [1:0][7:0] data_cycles;
 
-  //swap endianess?
   assign packet_destination = {<<8{header_buffer.mac_destination}};
 
-  //length of data payload in bytes
-  // assign ethertype = {<<8{header_buffer.eth_type_length}};
-  // assign data_cycles = ethertype * 8 / 2;
-
-  // 3 process state machine
-  // 1) decide which state to go into next
   always_comb begin
     next_state = current_state;
     crc_en = 1'b0;
@@ -146,11 +119,9 @@ module packet_recv #(
         end
       end
       PREAMBLE_SFD: begin
-        //          if(state_counter == PREAMBLE_SFD_CYCLES) begin
         if (preamble_sfd_buffer_next == 64'hd555555555555555) begin
           next_state = HEADER;
         end
-        //            end else next_state = IDLE;
       end
       HEADER: begin
         crc_en = 1'b1;
@@ -184,7 +155,6 @@ module packet_recv #(
 
   end
 
-  logic data_valid;
   logic data_last;
 
   logic h_fifo_empty;
@@ -192,32 +162,24 @@ module packet_recv #(
   logic [111 : 0] h_fifo_wr_data, next_h_fifo_wr_data, h_fifo_rd_data;
   logic d_fifo_ready;
 
-  // don't need this signal
-  // logic h_fifo_full;
-
   assign preamble_sfd_buffer_next[63:62] = rst ? 0 : rxd_z[2];
   assign preamble_sfd_buffer_next[61:0]  = rst ? 64'b0 : preamble_sfd_buffer[63:2];
 
   // populate and shift buffers according to state
+  logic [7:0] data_pipe [4];
+  logic [15:0] valid_pipe;
+  // logic rst_valid_pipe;
+  assign data_last = packet_done;
   always_ff @(posedge clk) begin
     if (rst == 1) begin
       preamble_sfd_buffer <= 0;
       header_buffer       <= 0;
       data_buffer         <= 0;
-      crc_buffer          <= 0;
-      data_valid          <= 0;
-      data_last           <= 0;
-      bad_frame           <= 0;
-      h_fifo_wr           <= 0;
-      h_fifo_wr_data      <= '0;
-      crc_rst             <= 0;
+      valid_pipe          <= 0;
+      crc_rst <= 0;
     end else begin
-      data_valid <= 0;
-      data_last  <= 0;
-      bad_frame  <= next_bad_frame;
-      h_fifo_wr  <= next_h_fifo_wr;
-      h_fifo_wr_data <= next_h_fifo_wr_data;
-      crc_rst    <= next_crc_rst;
+      crc_rst <= next_crc_rst;
+      
 
       case (current_state)
         PREAMBLE_SFD: begin
@@ -230,28 +192,32 @@ module packet_recv #(
         end
 
         DATA: begin
-          data_buffer[7:6] <= rxd_z[2];
-          data_buffer[5:0] <= data_buffer[7:2];
+          if(state_counter[1:0] == 'd3) begin
+            data_pipe[0] <= {rxd_z[2], data_buffer[7:2]};
+            data_pipe[1] <= data_pipe[0];
+            data_pipe[2] <= data_pipe[1];
+            data_pipe[3] <= data_pipe[2];
 
-          if (state_counter[1:0] == 3)  /*&& (packet_destination == FPGA_MAC*/ begin
-            data_valid <= 1;
+            valid_pipe <= {valid_pipe[14:0], 1'b1};
+          end else begin
+            data_buffer[7:6] <= rxd_z[2];
+            data_buffer[5:0] <= data_buffer[7:2];
+            valid_pipe <= {valid_pipe[14:0], 1'b0};
+          end
 
-          end
-          if (packet_done) begin
-            data_last <= 1;
-          end
         end
 
       endcase
+      if(crc_rst) valid_pipe <= 0;
     end
   end
 
-
+  wire rst_crc_gen = rst | crc_rst;
   crc_gen crc_rx (
       .data_in(rxd_z[2]),
       .crc_en(crc_en),
       .crc_out(running_crc),
-      .rst(rst | crc_rst),
+      .rst(rst_crc_gen),
       .clk(clk)
   );
 
@@ -280,36 +246,36 @@ module packet_recv #(
   );
 
   always_comb begin
-    next_bad_frame = 1'b0;
+    bad_frame = 1'b0;
     next_crc_rst = 1'b0;
-    next_h_fifo_wr = 1'b0;
-    next_h_fifo_wr_data = '0;
+    h_fifo_wr = 1'b0;
+    h_fifo_wr_data = '0;
 
     if (current_state != IDLE && next_state == IDLE) next_crc_rst = 1'b1;
-    if (packet_done && running_crc != 32'h2144DF1C) next_bad_frame = 1'b1;
+    if (packet_done && running_crc != 32'h2144DF1C) bad_frame = 1'b1;
 
-    if (packet_done && ~next_bad_frame) begin
+    if (packet_done && ~bad_frame) begin
       // will header buffer ever be full before data?
       // only write if data fifo is ready
       if (d_fifo_ready) begin
-        next_h_fifo_wr = 1'b1;
-        next_h_fifo_wr_data = {local_dest_mac, local_src_mac, local_ethertype};
+        h_fifo_wr = 1'b1;
+        h_fifo_wr_data = {local_dest_mac, local_src_mac, local_ethertype};
       end
     end
   end
-  fifo #(
-      .DATA_SIZE(48 + 48 + 16),
-      .MAX_DEPTH(DEPTH / 46)
+
+  fwft_fifo #(
+      .DATA_WIDTH(48 + 48 + 16)
   ) header_fifo (
       .clk(clk),
       .rst(rst),
 
-      .write_to_fifo(h_fifo_wr),
-      .read_from_fifo(header_rd),
-      .write_data_in(h_fifo_wr_data),
-      .read_data_out(h_fifo_rd_data),
+      .wr_en(h_fifo_wr),
+      .rd_en(header_rd),
+      .din(h_fifo_wr_data),
+      .dout(h_fifo_rd_data),
       .empty(h_fifo_empty),
-      .full(h_fifo_full)
+      .full()
   );
 
   assign dest_mac = h_fifo_rd_data[111-:48];
@@ -317,18 +283,18 @@ module packet_recv #(
   assign ethertype = h_fifo_rd_data[111-48-48 : 0];
   assign header_valid = ~h_fifo_empty;
 
-  axis_fifo #(
+  axis_fifo_atomic #(
       .DATA_WIDTH(DATA_WIDTH),
-      .DEPTH(DEPTH)
+      .ADDR_WIDTH($clog2(DEPTH))
   ) data_fifo (
       .clk(clk),
       .rst(rst),
 
-      .s_axis_tdata(data_buffer),
-      .s_axis_tvalid(data_valid),
+      .s_axis_tdata(data_pipe[3]),
+      .s_axis_tvalid(valid_pipe[15]),
       .s_axis_tlast(data_last),
       .s_axis_tready(d_fifo_ready),
-      .bad_frame(bad_frame),
+      .s_axis_tuser(bad_frame),
 
       .m_axis_tdata (m_axis_tdata),
       .m_axis_tvalid(m_axis_tvalid),

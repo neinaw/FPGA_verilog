@@ -32,8 +32,6 @@ module packet_tx #(
       .output_header(header_tx_order)
   );
 
-  // localparam PACKET_PAYLOAD_BYTES = PACKET_PAYLOAD_WORDS * WORD_BYTES;
-
   // create a first
   logic s_axis_tfirst;
 
@@ -55,7 +53,7 @@ module packet_tx #(
 
 
   // header and state buffers
-  ethernet_header                                header;
+  // ethernet_header                                header;
   logic           [$bits(ethernet_header)-1 : 0] header_buffer;
   //ethernet_header                    header_buffer;
   logic           [            WORD_BYTES*8-1:0] data_buffer;
@@ -79,7 +77,6 @@ module packet_tx #(
   localparam SFD_LENGTH = SFD_BYTES * 8 / MII_WIDTH;
   localparam PREAMBLE_LENGTH = PREAMBLE_BYTES * 8 / MII_WIDTH;
   localparam FCS_LENGTH = FCS_BYTES * 8 / MII_WIDTH;
-  // localparam DATA_LENGTH = DATA_BYTES * 8 / MII_WIDTH;
   localparam MIN_DATA_LENGTH = 46 * 8 / MII_WIDTH;
   localparam DATA_COUNTER_BITS = $clog2(WORD_BYTES * 8 / MII_WIDTH);
 
@@ -101,7 +98,7 @@ module packet_tx #(
   // Data fifo
   logic                           fifo_full;
   logic                           fifo_empty;
-  logic        [             9:0] fifo_count;
+  logic        [             10:0] fifo_count;
   logic        [WORD_BYTES*8-1:0] fifo_out;
   logic                           fifo_rd_en;
   logic                           fifo_wr_en;
@@ -113,7 +110,6 @@ module packet_tx #(
 
   logic h_fifo_has_space;
   logic h_fifo_full;
-  // assign fifo_has_space = (fifo_count < FIFO_DEPTH - PACKET_PAYLOAD_BYTES) ? 1 : 0;
   assign fifo_has_space = (fifo_count < FIFO_DEPTH - 'd46) ? 1 : 0;
   assign h_fifo_has_space = ~h_fifo_full;
 
@@ -177,35 +173,35 @@ module packet_tx #(
   //  assign header.eth_type_length = h_fifo_data[15:0];
 
   // data FIFO
-  fifo #(
-      .DATA_SIZE(8),
-      .MAX_DEPTH(FIFO_DEPTH)
+  fwft_fifo #(
+      .DATA_WIDTH(8),
+      .DEPTH(FIFO_DEPTH)
   ) data_fifo_i (
       .clk(clk),
       .rst(rst),
-      .write_data_in(s_axis_tdata),
-      .write_to_fifo(fifo_wr_en),
-      .read_from_fifo(fifo_rd_en),
-      .read_data_out(fifo_out),
+      .din(s_axis_tdata),
+      .wr_en(fifo_wr_en),
+      .rd_en(fifo_rd_en),
+      .dout(fifo_out),
       .full(fifo_full),
       .empty(fifo_empty),
-      .fifo_count(fifo_count)
+      .count(fifo_count)
   );
 
   logic [4:0] header_count;
   logic header_empty;
-  fifo #(
-      .DATA_SIZE(112)
+  fwft_fifo #(
+      .DATA_WIDTH(112)
   ) header_fifo_i (
       .clk(clk),
       .rst(rst),
-      .write_to_fifo(h_fifo_wr_en),
-      .read_from_fifo(h_fifo_rd_en),
-      .write_data_in(header),
-      .read_data_out(h_fifo_data),
+      .wr_en(h_fifo_wr_en),
+      .rd_en(h_fifo_rd_en),
+      .din(header),
+      .dout(h_fifo_data),
       .full(h_fifo_full),
       .empty(header_empty),
-      .fifo_count(header_count)
+      .count(header_count)
   );
 
 
@@ -477,15 +473,14 @@ module packet_tx #(
     end
 
   end
-  ila_0 debug_i (
-      .clk(clk),  // input wire clk
+  // ila_0 debug_i (
+  //     .clk(clk),  // input wire clk
 
 
-      .probe0(tx_en),  // input wire [0:0]  probe0
-      .probe1(header_rd),  // input wire [0:0]  probe1
-      .probe2(txd),  // input wire [47:0]  probe2
-      .probe3(header),  // input wire [47:0]  probe3
-      .probe4(header_tx_order),  // input wire [15:0]  probe4
-      .probe5(header_buffer)  // input wire [0:0]  probe5
-  );
+  //     .probe0(tx_en),  // input wire [0:0]  probe0
+  //     .probe1(header_rd),  // input wire [0:0]  probe1
+  //     .probe2(txd),  // input wire [47:0]  probe2
+  //     .probe3(header),  // input wire [47:0]  probe3
+  //     .probe4(header_valid)
+  // );
 endmodule

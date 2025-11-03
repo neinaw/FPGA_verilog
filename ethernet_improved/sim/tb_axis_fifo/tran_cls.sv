@@ -25,7 +25,7 @@ class Input_tran;
         payload = new[len];
 
         for (int i=0; i<len; i++) begin
-            payload[i] = (i == len-1) ? 8'hFF : 8'hAA;
+            payload[i] = (i == len-1) ? 8'hFF : i;
         end
     endfunction: new
 

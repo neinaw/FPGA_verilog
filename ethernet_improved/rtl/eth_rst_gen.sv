@@ -5,7 +5,6 @@ module eth_rst_gen (
     input  rst,
     output eth_clk_out,
     output eth_rst_out,
-    output ETH_REFCLK,
     output ETH_RSTN
 );
 
@@ -16,7 +15,6 @@ module eth_rst_gen (
     clk_wiz_0 gen_50M (
         // Clock out ports
         .clk_out1(eth_clk),     // output clk_out1
-        .clk_out2(ETH_REFCLK),  // output clk_out2
         // Status and control signals
         .reset   (rst),         // input reset
         .locked  (locked),      // output locked
