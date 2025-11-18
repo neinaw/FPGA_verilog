@@ -56,8 +56,6 @@ module eth_top (
       .m_axis_tready(M_AXIS_TREADY)
   );
 
-  // localparam [47:0] dest = 48'h54_e1_ad_33_0d_32;
-  // localparam [47:0] broadcast = {6{8'hFF}};
   packet_tx transmitter (
       .clk(eth_clk),
       .rst(eth_rst),
@@ -73,18 +71,18 @@ module eth_top (
       .tx_en(ETH_TXEN),
       .txd  (ETH_TXD)
   );
-ila_0 debug_i (
-	.clk(eth_clk), // input wire clk
+// ila_0 debug_i (
+// 	.clk(eth_clk), // input wire clk
 
 
-	// .probe0(h_fifo_wr), // input wire [0:0]  probe0  
-	.probe0(header_rd), // input wire [0:0]  probe1 
-	.probe2({dest_mac, src_mac, ethertype}), // input wire [111:0]  probe2 
-	// .probe3(h_fifo_rd_data), // input wire [111:0]  probe3 
-	// .probe4(h_fifo_empty), // input wire [0:0]  probe4 
-	// .probe5(h_fifo_full), // input wire [0:0]  probe5
-  .probe1(header_valid)
-);
+// 	// .probe0(h_fifo_wr), // input wire [0:0]  probe0  
+// 	.probe0(header_rd), // input wire [0:0]  probe1 
+// 	.probe2({dest_mac, src_mac, ethertype}), // input wire [111:0]  probe2 
+// 	// .probe3(h_fifo_rd_data), // input wire [111:0]  probe3 
+// 	// .probe4(h_fifo_empty), // input wire [0:0]  probe4 
+// 	// .probe5(h_fifo_full), // input wire [0:0]  probe5
+//   .probe1(header_valid)
+// );
   //  ila_0 debug_i (
   //	.clk(eth_clk), // input wire clk
 
@@ -103,13 +101,29 @@ ila_0 debug_i (
   // No mdio interface
   assign ETH_MDC = 0;
 
+  logic fwd_clk;
   eth_rst_gen eth_rst_gen_i (
       .clk(CLK),
       .rst(rst),
       .eth_clk_out(eth_clk),
+      .fwd_clk_out(fwd_clk),
       .eth_rst_out(eth_rst),
       .ETH_RSTN(ETH_RSTN)
   );
-  assign ETH_REFCLK = eth_clk;
+  ODDR #(
+    .DDR_CLK_EDGE("OPPOSITE_EDGE"), // "OPPOSITE_EDGE" or "SAME_EDGE"
+    .INIT(1'b0),    // Initial value of Q: 1'b0 or 1'b1
+    .SRTYPE("ASYNC") // Set/Reset type: "SYNC" or "ASYNC"
+  ) ODDR_inst (
+    .Q(ETH_REFCLK),   // 1-bit DDR output
+    .C(fwd_clk),   // 1-bit clock input
+    .CE(1'b1), // 1-bit clock enable input
+    .D1(1'b1), // 1-bit data input (positive edge)
+    .D2(1'b0), // 1-bit data input (negative edge)
+    .R(rst),   // 1-bit reset
+    .S(1'b0)    // 1-bit set
+);
+
+  // assign ETH_REFCLK = eth_clk;
 endmodule
 

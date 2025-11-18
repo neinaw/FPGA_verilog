@@ -4,6 +4,7 @@ module eth_rst_gen (
     input  clk,
     input  rst,
     output eth_clk_out,
+    output fwd_clk_out,
     output eth_rst_out,
     output ETH_RSTN
 );
@@ -14,12 +15,13 @@ module eth_rst_gen (
 
     clk_wiz_0 gen_50M (
         // Clock out ports
-        .clk_out1(eth_clk),     // output clk_out1
+        .clk_out1(eth_clk),     // output clk_out1, phase = 45deg
+        .clk_out2(fwd_clk),     // output clk_out2, phase =  0deg
         // Status and control signals
-        .reset   (rst),         // input reset
-        .locked  (locked),      // output locked
+        .reset(rst), // input reset
+        .locked(locked),       // output locked
         // Clock in ports
-        .clk_in1 (clk)          // input clk_in1
+        .clk_in1(clk)      // input clk_in1
     );
 
 `ifdef XILINX_SIMULATOR
@@ -51,14 +53,13 @@ module eth_rst_gen (
             else begin
                 eth_rst <= 1;
                 wait_counter_50M <= 0;
-
-
             end
         end
     end
 
     assign ETH_RSTN = ~eth_rst;
     assign eth_clk_out = eth_clk;
+    assign fwd_clk_out = fwd_clk;
     assign eth_rst_out = eth_rst;
 
 endmodule
